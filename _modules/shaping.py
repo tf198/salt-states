@@ -1,7 +1,8 @@
 '''
 Traffic shaping module
 '''
-import logging, StringIO
+from salt import utils
+import logging, StringIO, os
 
 logger = logging.getLogger(__name__)
 
@@ -11,9 +12,11 @@ def __virtual__():
     '''
     Constrain to linux systems
     '''
-    if __grains__['kernel'] == 'Linux':
+    try:
+        utils.check_or_die('tc')
         return 'shaping'
-    return False
+    except:
+        return False
 
 _SHAPING_SCRIPT = "/etc/tc_shaping_{0}"
 
@@ -65,8 +68,10 @@ def _tc_qdisc(stream, counters, qdisc, iface, parent_qdisc, parent_cls):
     params.update(qdisc)
     
     _tc_comment(stream, qdisc)
+    
+    parent = "parent {parent_qdisc}:{parent_cls}".format(**params) if parent_qdisc else "root"
         
-    stream.write("tc qdisc add dev {iface} parent {parent_qdisc}:{parent_cls} {info}\n".format(**params))
+    stream.write("tc qdisc add dev {iface} {parent} {info}\n".format(parent=parent, **params))
     
     for cls in qdisc.get('classes', ()):
         _tc_class(stream, counters, cls, iface, qdisc['type'], qdisc['_id'], '')
@@ -106,11 +111,9 @@ def _compile_tc(iface, qdisc, stream):
     counters = Counters()
     
     _tc_comment(stream, qdisc)
-    stream.write('tc qdisc del dev {0} root\n'.format(iface))
-    stream.write('tc qdisc add dev {0} root {1}\n'.format(iface, _qdisc_info(qdisc, counters)))
-        
-    for cls in qdisc.get('classes', ()):
-        _tc_class(stream, counters, cls, iface, qdisc['type'], qdisc['_id'], '')
+    stream.write('tc qdisc del dev {0} root || true\n'.format(iface))
+    
+    _tc_qdisc(stream, counters, qdisc, iface, None, None)
 
 def _get_script_name(interface):
     return _SHAPING_SCRIPT.format(interface)
@@ -125,6 +128,11 @@ def get_tc_script(interface, filename=None):
     '''
     if not filename:
         filename = _get_script_name(interface)
+        
+    if not os.path.exists(filename):
+        return None
+    
+    return open(filename, 'r').read()       
 
 def build_tc_script(interface, qdisc, filename=None, testing=False):
     '''
@@ -142,18 +150,34 @@ def build_tc_script(interface, qdisc, filename=None, testing=False):
     else:
         stream = open(_get_script_name(interface), 'w+')
     
+    if not qdisc:
+        raise Exception("No qdisc passed")
+    
     _compile_tc(interface, qdisc, stream)
     
     stream.flush()
     stream.seek(0)
     
+    os.chmod(filename, 0755)
+    
     return stream.read()
+
+def enable(iface):
+    script = _get_script_name(iface)
+    
+    if not os.path.exists(script):
+        raise Exception("Script for {0} has not yet been built".format(iface))
+    
+    return __salt__['cmd.run'](_get_script_name(iface))
+
+def disable(iface):
+    return __salt__['cmd.run']('tc qdisc del dev {0} root'.format(iface))
 
 def test(iface):
     '''
     Testing
     '''
-    import yaml, os.path
+    import yaml
 
     test_data = '{0}/shaping_test.yaml'.format(os.path.dirname(os.path.realpath(__file__)))
     data = yaml.load(open(test_data, 'r'))

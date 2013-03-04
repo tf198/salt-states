@@ -57,7 +57,7 @@ The following data structures are available
 
 import difflib
 
-def managed(name, qdisc):
+def qdisc(name, **qdisc):
     '''
     Set up traffic shaping for the named interface
 
@@ -68,7 +68,7 @@ def managed(name, qdisc):
         The root qdisc specification, as above
     '''
     ret = {
-        'interface': name,
+        'name': name,
         'changes': {},
         'result': True,
         'comment': 'Shaping for interface {0} is up to date.'.format(name)
@@ -95,5 +95,17 @@ def managed(name, qdisc):
     
     if testing:
         return ret
-        
+    
+    try:
+        if qdisc.get('enabled', True):
+            __salt__['shaping.enable'](name)
+            ret['comment'] = "Shaping enabled for interface {0}".format(name)
+        else:
+            __salt__['shaping.disable'](name)
+            ret['comment'] = "Shaping disabled for interface {0}".format(name)
+    except Exception as error:
+        ret['result'] = False
+        ret['comment'] = error.message
+        return ret
+    
     return ret
