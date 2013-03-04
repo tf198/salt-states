@@ -1,0 +1,7 @@
+eth0: # basic priority queue - see http://www.lartc.org/howto/lartc.qdisc.classful.html#AEN902
+    shaping.qdisc:
+      - type: prio
+      - classes:
+        - qdisc: { type: sfq } # prio 1
+        - qdisc: { type: tbf, options: rate 20kbit buffer 1600 limit 3000 } # prio 2
+        - qdisc: { type: sfq } # prio 3

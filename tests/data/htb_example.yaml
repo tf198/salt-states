@@ -1,0 +1,20 @@
+eth1: # More complicated Hierarchical Token Bucket example
+    shaping.qdisc:
+      - type: htb
+      - default: 13
+      - classes:
+        - comment: Interface limit
+          options: rate 1024kbit # slightly below the connection speed
+          classes:
+            - comment: Default traffic
+              id: 13                                    # explicit class ID so we can reference as default from the qdisc
+              options: rate 768kbit ceil 1024kbit prio 2
+              qdisc: { type: sfq, options: perturb 10 } # recommended to always add a SFQ to the bottom of everything
+            - comment: Interactive traffic
+              filters: [ match ip tos 0x10 0xff ]       # TOS interactive
+              options: rate 128kbit prio 1
+              qdisc: { type: sfq, options: perturb 10 }
+            - comment: Bulk traffic
+              filters: [ match ip tos 0x08 0xff ]       # TOS bulk
+              options: rate 128kbit ceil 1024kbit prio 3
+              qdisc: { type: sfq, options: perturb 10 }
