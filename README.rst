@@ -8,4 +8,4 @@ Current States
 
 Shaping
 ~~~~~~~
-Add traffic shaping to an interface using `tc`
+Add traffic shaping to an interface using ``tc``
