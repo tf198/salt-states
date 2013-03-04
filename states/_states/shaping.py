@@ -23,35 +23,33 @@ The following data structures are available
 .. code-block:: yaml
 
   eth0: # basic priority queue - see http://www.lartc.org/howto/lartc.qdisc.classful.html#AEN902
-    shaping.managed:
-      qdisc:
-        type: prio
-        classes:
-          - qdisc: { type: sfq } # prio 1
-          - qdisc: { type: tbf, options: rate 20kbit buffer 1600 limit 3000 } # prio 2
-          - qdisc: { type: sfq } # prio 3
+    shaping.qdisc:
+      - type: prio
+      - classes:
+        - qdisc: { type: sfq } # prio 1
+        - qdisc: { type: tbf, options: rate 20kbit buffer 1600 limit 3000 } # prio 2
+        - qdisc: { type: sfq } # prio 3
 
   eth1: # More complicated Hierarchical Token Bucket example
-    shaping.managed:
-      qdisc:
-        type: htb
-        default: 13
-        classes:
-          - comment: Interface limit
-            options: rate 1024kbit # slightly below the connection speed
-            classes:
-              - comment: Default traffic
-                id: 13                                    # explicit class ID so we can reference as default from the qdisc
-                options: rate 768kbit ceil 1024kbit prio 2
-                qdisc: { type: sfq, options: perturb 10 } # recommended to always add a SFQ to the bottom of everything
-              - comment: Interactive traffic
-                filters: [ match ip tos 0x10 0xff ]       # TOS interactive
-                options: rate 128kbit prio 1
-                qdisc: { type: sfq, options: perturb 10 }
-              - comment: Bulk traffic
-                filters: [ match: ip tos 0x08 0xff ]       # TOS bulk
-                options: rate 128kbit ceil 1024kbit prio 3
-                qdisc: { type: sfq, options: perturb 10 }
+    shaping.qdisc:
+      - type: htb
+      - default: 13
+      - classes:
+        - comment: Interface limit
+          options: rate 1024kbit # slightly below the connection speed
+          classes:
+            - comment: Default traffic
+              id: 13                                    # explicit class ID so we can reference as default from the qdisc
+              options: rate 768kbit ceil 1024kbit prio 2
+              qdisc: { type: sfq, options: perturb 10 } # recommended to always add a SFQ to the bottom of everything
+            - comment: Interactive traffic
+              filters: [ match ip tos 0x10 0xff ]       # TOS interactive
+              options: rate 128kbit prio 1
+              qdisc: { type: sfq, options: perturb 10 }
+            - comment: Bulk traffic
+              filters: [ match: ip tos 0x08 0xff ]       # TOS bulk
+              options: rate 128kbit ceil 1024kbit prio 3
+              qdisc: { type: sfq, options: perturb 10 }
                 
 '''
 
@@ -81,10 +79,10 @@ def qdisc(name, **qdisc):
         new = __salt__['shaping.build_tc_script'](name, qdisc, testing)
         
         if not old and new:
-            ret['changes']['interface'] = 'Created shaping script.'
+            ret['changes']['shaping'] = 'Created shaping script.'
         elif old != new:
             diff = difflib.unified_diff(old, new)
-            ret['changes']['interface'] = ''.join(diff)
+            ret['changes']['shaping'] = ''.join(diff)
         else:
             return ret # no changes
         

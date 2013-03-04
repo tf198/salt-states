@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 def __virtual__():
     '''
-    Constrain to linux systems
+    Verify that tc (iproute) is installed
     '''
     try:
         utils.check_or_die('tc')
@@ -53,7 +53,7 @@ def _qdisc_info(qdisc, counters):
     qdisc['_id'] = counters.get_qdisc_id(cls_start)
     
     if not 'options' in qdisc: qdisc['options'] = ''
-    return "handle {_id}: {type} {options}".format(**qdisc)
+    return "handle {_id}: {type} {options}".format(**qdisc).strip()
 
 def _tc_comment(stream, item):
     if 'comment' in item:
@@ -89,8 +89,7 @@ def _tc_class(stream, counters, cls, iface, qdisc_type, parent_qdisc, parent_cls
     # add the filters
     params['filter_parent'] = 1 if qdisc_type == 'htb' else parent_qdisc
     for match in cls.get('filters', ()):
-        params['match'] = match
-        stream.write('tc filter add dev {iface} parent {filter_parent}: {match} flowid {parent_qdisc}:{id}\n'.format(**params))
+        stream.write('tc filter add dev {iface} parent {filter_parent}: u32 {match} flowid {parent_qdisc}:{id}\n'.format(match=match, **params))
     
     if qdisc_type != 'prio': # these are automatically created    
         stream.write('tc class add dev {iface} parent {parent_qdisc}:{parent_cls} classid {parent_qdisc}:{id} {qdisc_type} {options}\n'.format(**params))
@@ -118,6 +117,14 @@ def _compile_tc(iface, qdisc, stream):
 def _get_script_name(interface):
     return _SHAPING_SCRIPT.format(interface)
 
+def _cmd_exec(cmd):
+    result = __salt__['cmd.run_all'](cmd)
+    
+    if result['retcode'] != 0:
+        raise Exception("Command returned {0}: {1}".format(result['retcode'], result['stderr']))
+                        
+    return result['stdout']
+
 def get_tc_script(interface, filename=None):
     '''
     Get the current contents of the traffic shaping script
@@ -132,7 +139,7 @@ def get_tc_script(interface, filename=None):
     if not os.path.exists(filename):
         return None
     
-    return open(filename, 'r').read()       
+    return open(filename, 'r').readlines()       
 
 def build_tc_script(interface, qdisc, filename=None, testing=False):
     '''
@@ -160,18 +167,33 @@ def build_tc_script(interface, qdisc, filename=None, testing=False):
     
     os.chmod(filename, 0755)
     
-    return stream.read()
+    return stream.readlines()
 
 def enable(iface):
+    '''
+    Enable shaping on an interface.  Executes the `/etc/tc_shaping_<iface>` script
+    built by shaping.build_tc_script
+    
+    CLI Example::
+    
+        salt '*' shaping.enable eth0
+    '''
     script = _get_script_name(iface)
     
     if not os.path.exists(script):
         raise Exception("Script for {0} has not yet been built".format(iface))
     
-    return __salt__['cmd.run'](_get_script_name(iface))
+    return _cmd_exec(_get_script_name(iface))
 
 def disable(iface):
-    return __salt__['cmd.run']('tc qdisc del dev {0} root'.format(iface))
+    '''
+    Disable shaping on an interface.  Restores the default pfifo_fast qdisc.
+
+    CLI Example::
+
+        salt '*' shaping.disable eth0
+    '''
+    return _cmd_exec('tc qdisc del dev {0} root'.format(iface))
 
 def test(iface):
     '''
