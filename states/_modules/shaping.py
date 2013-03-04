@@ -165,7 +165,8 @@ def build_tc_script(interface, qdisc, filename=None, testing=False):
     stream.flush()
     stream.seek(0)
     
-    os.chmod(filename, 0755)
+    if not testing:
+        os.chmod(filename, 0755)
     
     return stream.readlines()
 
